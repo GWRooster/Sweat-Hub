@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sweat Board</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{--bg:#0b0f17;--panel:#131a26;--panel2:#1a2333;--line:#263247;--txt:#e8eef8;--mute:#8a98b0;--win:#22e08a;--lose:#ff4d6a;--mid:#ffc24d;--accent:#5ab8ff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+header{position:sticky;top:0;z-index:5;background:linear-gradient(180deg,#0b0f17 70%,rgba(11,15,23,.85));padding:14px 16px 10px;border-bottom:1px solid var(--line)}
+h1{margin:0;font-size:20px;letter-spacing:.5px}
+h1 span{color:var(--accent)}
+.sub{color:var(--mute);font-size:12px;margin-top:2px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px}
+.kpi b{display:block;font-size:17px;font-variant-numeric:tabular-nums}
+.kpi small{color:var(--mute);font-size:10px;text-transform:uppercase;letter-spacing:.6px}
+main{padding:14px 16px 40px;max-width:1100px;margin:0 auto}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--mute);margin:22px 0 10px}
+.chartbox{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px;height:280px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;transition:border-color .4s,box-shadow .4s}
+.card.flashup{box-shadow:0 0 0 2px var(--win)}
+.card.flashdn{box-shadow:0 0 0 2px var(--lose)}
+.row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.wtitle{font-weight:700;font-size:15px}
+.stake{color:var(--mute);font-size:12px}
+.big{font-size:34px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+.bar{height:8px;background:var(--panel2);border-radius:6px;overflow:hidden;margin:10px 0}
+.bar i{display:block;height:100%;border-radius:6px;transition:width .8s ease,background .8s}
+.legs{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.leg{display:flex;align-items:center;gap:8px;background:var(--panel2);border-radius:8px;padding:6px 8px;font-size:13px}
+.leg img{width:22px;height:22px;object-fit:contain}
+.leg .nm{flex:1}
+.leg .st{font-size:11px;color:var(--mute);white-space:nowrap}
+.leg .pc{font-weight:700;font-variant-numeric:tabular-nums;width:46px;text-align:right}
+.tag{font-size:10px;font-weight:700;padding:2px 6px;border-radius:5px;text-transform:uppercase;letter-spacing:.5px}
+.tag.won{background:rgba(34,224,138,.15);color:var(--win)}
+.tag.lost{background:rgba(255,77,106,.15);color:var(--lose)}
+.tag.live{background:rgba(255,194,77,.15);color:var(--mid)}
+.tag.pre{background:rgba(138,152,176,.15);color:var(--mute)}
+.ev{font-size:12px;color:var(--mute);margin-top:6px;display:flex;justify-content:space-between}
+.team{display:flex;align-items:center;gap:8px;font-size:15px}
+.team img{width:30px;height:30px;object-fit:contain}
+.score{font-size:26px;font-weight:800;font-variant-numeric:tabular-nums}
+.gdetail{color:var(--mid);font-size:12px;font-weight:600;text-align:center;margin:6px 0}
+.spark{height:110px;margin-top:8px}
+.foot{color:var(--mute);font-size:11px;margin-top:24px;line-height:1.6}
+button{background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer}
+.err{color:var(--lose)}
+@media(max-width:560px){.kpis{grid-template-columns:repeat(2,1fr)}.chartbox{height:240px}.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <div class="row">
+    <div><h1>SWEAT<span>BOARD</span></h1><div class="sub" id="status">Loading scores…</div></div>
+    <button id="reset">Reset history</button>
+  </div>
+  <div class="kpis">
+    <div class="kpi"><small>Staked</small><b id="kStake">–</b></div>
+    <div class="kpi"><small>Expected return</small><b id="kExp">–</b></div>
+    <div class="kpi"><small>Max return</small><b id="kMax">–</b></div>
+    <div class="kpi"><small>Expected P/L</small><b id="kPL">–</b></div>
+  </div>
+</header>
+<main>
+  <h2>Wager win probability — live</h2>
+  <div class="chartbox"><canvas id="mainChart"></canvas></div>
+  <h2>Wagers</h2>
+  <div class="grid" id="wagers"></div>
+  <h2>Games</h2>
+  <div class="grid" id="games"></div>
+  <div class="foot">
+    Scores: ESPN public scoreboard, refreshed every 20s. Moneyline legs use ESPN's live win probability when available.
+    Spread legs use a margin model: final margin ~ Normal(current margin + pregame spread × time left, 15.5 × √time left).
+    Pregame spreads come from the wager lines themselves. Parlays assume independent legs. Entertainment estimates only.
+  </div>
+</main>
+
+<script>
+/* ================= CONFIG — edit wagers here ================= */
+const DATE = '20261106';          // ESPN scoreboard date (YYYYMMDD)
+const SIGMA = 15.5;               // college football final-margin std dev, points
+const POLL_MS = 20000;
+const WAGERS = [
+  {id:'SMU',  label:'SMU -5½',          stake:50, legs:[{team:'SMU', type:'spread', line:-5.5, odds:-107}]},
+  {id:'VT',   label:'Virginia Tech +6', stake:25, legs:[{team:'Virginia Tech', type:'spread', line:6, odds:-107}]},
+  {id:'USF',  label:'South Florida +1', stake:25, legs:[{team:'South Florida', type:'spread', line:1, odds:-107}]},
+  {id:'NEB',  label:'Nebraska -4',      stake:25, legs:[{team:'Nebraska', type:'spread', line:-4, odds:-107}]},
+  {id:'P5',   label:'5-Team Parlay',    stake:50, legs:[
+      {team:'SMU', type:'spread', line:-5.5, odds:-110},
+      {team:'East Carolina', type:'spread', line:0, odds:-110},
+      {team:'New Mexico', type:'spread', line:-10, odds:-110},
+      {team:'Illinois', type:'spread', line:4, odds:-110},
+      {team:'Arizona', type:'spread', line:-7, odds:-110}]},
+  {id:'P3',   label:'3-Team ML Parlay', stake:25, legs:[
+      {team:'SMU', type:'ml', odds:-213},
+      {team:'Nebraska', type:'ml', odds:-186},
+      {team:'TCU', type:'ml', odds:226}]},
+];
+const COLORS = ['#5ab8ff','#ff8a3d','#22e08a','#ff4d9a','#c88cff','#ffd84d','#4de8e0','#ff6b6b'];
+/* ============================================================ */
+
+const URL_ = `https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?dates=${DATE}&groups=80&limit=300`;
+const KEY = 'sweatboard-' + DATE;
+const $ = s => document.querySelector(s);
+const norm = s => (s||'').toLowerCase().replace(/[^a-z]/g,'');
+const money = n => (n<0?'-':'') + '$' + Math.abs(n).toFixed(2);
+const pct = p => (p*100).toFixed(p>0.995||p<0.005?0:1) + '%';
+function erf(x){const s=Math.sign(x);x=Math.abs(x);const t=1/(1+0.3275911*x);
+  return s*(1-(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-0.284496736)*t+0.254829592)*t*Math.exp(-x*x));}
+const Phi = z => 0.5*(1+erf(z/Math.SQRT2));
+function probit(p){let lo=-8,hi=8;for(let i=0;i<60;i++){const m=(lo+hi)/2;Phi(m)<p?lo=m:hi=m;}return (lo+hi)/2;}
+const dec = o => o>0 ? 1+o/100 : 1+100/(-o);
+const implied = o => o>0 ? 100/(o+100) : -o/(-o+100);
+const legKey = l => `${norm(l.team)}|${l.type}|${l.line??''}`;
+const legName = l => l.type==='ml' ? `${l.team} ML` : `${l.team} ${l.line===0?'PK':(l.line>0?'+':'')+l.line}`;
+const colorFor = p => p>=0.6 ? 'var(--win)' : p<=0.4 ? 'var(--lose)' : 'var(--mid)';
+
+/* pregame expected margin per team, derived from the wager lines */
+const PRE = {};
+WAGERS.forEach(w=>w.legs.forEach(l=>{ if(l.type==='spread') PRE[norm(l.team)] = -l.line; }));
+WAGERS.forEach(w=>w.legs.forEach(l=>{ const k=norm(l.team);
+  if(l.type==='ml' && PRE[k]===undefined) PRE[k] = SIGMA*probit(implied(l.odds)); }));
+
+/* history */
+let H; try{ H = JSON.parse(localStorage.getItem(KEY)) }catch(e){}
+if(!H || !H.t) H = {t:[], w:{}, l:{}};
+const save = () => { try{ localStorage.setItem(KEY, JSON.stringify(H)) }catch(e){} };
+$('#reset').onclick = () => { H={t:[],w:{},l:{}}; save(); poll(); };
+
+let games = [], built = false;
+const sparks = {}, prev = {};
+let mainChart;
+
+function teamMatch(t, name){
+  const n = norm(name);
+  return [t.location, t.abbreviation, t.shortDisplayName].some(x => x && norm(x)===n);
+}
+function parseEvent(ev){
+  const c = ev.competitions[0];
+  const home = c.competitors.find(x=>x.homeAway==='home'), away = c.competitors.find(x=>x.homeAway==='away');
+  const st = c.status || ev.status, state = st.type.state;
+  let sec = 3600;
+  if(state==='post') sec = 0;
+  else if(state==='in'){
+    const p = st.period||1, clk = st.clock||0;
+    sec = st.type.name==='STATUS_HALFTIME' ? 1800 : p<=4 ? (4-p)*900 + clk : 90;
+  }
+  const wp = c.situation?.lastPlay?.probability?.homeWinPercentage;
+  return { id:ev.id, state, sec, detail: st.type.shortDetail,
+    home:{t:home.team, s:+home.score||0}, away:{t:away.team, s:+away.score||0},
+    wp: (typeof wp==='number') ? wp : null };
+}
+function findGame(team){
+  for(const g of games){
+    if(teamMatch(g.home.t, team)) return {g, sign:1};
+    if(teamMatch(g.away.t, team)) return {g, sign:-1};
+  }
+  return null;
+}
+function homeExp(g){
+  const h = PRE[norm(g.home.t.location)], a = PRE[norm(g.away.t.location)];
+  const vals = []; if(h!==undefined) vals.push(h); if(a!==undefined) vals.push(-a);
+  return vals.length ? vals.reduce((x,y)=>x+y,0)/vals.length : 0;
+}
+function legEval(l){
+  const f = findGame(l.team);
+  const pre = PRE[norm(l.team)] ?? 0;
+  if(!f){
+    const p = l.type==='ml' ? implied(l.odds) : Phi((pre + l.line)/SIGMA);
+    return {p, status:'pre', note:'not on scoreboard'};
+  }
+  const {g, sign} = f;
+  const m = sign*(g.home.s - g.away.s), te = sign*homeExp(g);
+  const opp = sign>0 ? g.away.t : g.home.t;
+  const base = {game:g, logo:(sign>0?g.home.t:g.away.t).logo, note:`vs ${opp.abbreviation||opp.location}`};
+  if(g.state==='post'){
+    const v = l.type==='ml' ? m : m + l.line;
+    return {...base, p: v>0?1 : v===0?0.5 : 0, status: v>0?'won':v===0?'push':'lost'};
+  }
+  const fr = g.sec/3600, mu = m + te*fr, sd = Math.max(SIGMA*Math.sqrt(fr), 0.6);
+  let p;
+  if(l.type==='ml') p = (g.state==='in' && g.wp!==null) ? (sign>0 ? g.wp : 1-g.wp) : Phi(mu/sd);
+  else p = Phi((mu + l.line)/sd);
+  return {...base, p: Math.min(Math.max(p,0.001),0.999), status: g.state==='in'?'live':'pre'};
+}
+function wagerEval(w){
+  const legs = w.legs.map(l=>({l, ...legEval(l)}));
+  const p = legs.reduce((a,x)=>a*x.p, 1);
+  const payout = w.stake * w.legs.reduce((a,l)=>a*dec(l.odds), 1);
+  return {legs, p, payout};
+}
+
+function buildUI(){
+  $('#wagers').innerHTML = WAGERS.map(w=>`
+    <div class="card" id="w-${w.id}">
+      <div class="row"><div><div class="wtitle">${w.label}</div><div class="stake" id="ws-${w.id}"></div></div>
+      <div class="big" id="wp-${w.id}">–</div></div>
+      <div class="bar"><i id="wb-${w.id}"></i></div>
+      <div class="legs" id="wl-${w.id}"></div>
+      <div class="ev" id="we-${w.id}"></div>
+    </div>`).join('');
+  const relevant = gamesWithLegs();
+  $('#games').innerHTML = relevant.map(({g})=>`
+    <div class="card" id="g-${g.id}">
+      <div class="row">
+        <div class="team"><img src="${g.away.t.logo||''}" alt=""><div>${g.away.t.location}</div></div>
+        <div class="score" id="gsa-${g.id}"></div>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <div class="team"><img src="${g.home.t.logo||''}" alt=""><div>${g.home.t.location}</div></div>
+        <div class="score" id="gsh-${g.id}"></div>
+      </div>
+      <div class="gdetail" id="gd-${g.id}"></div>
+      <div class="legs" id="gl-${g.id}"></div>
+      <div class="spark"><canvas id="gc-${g.id}"></canvas></div>
+    </div>`).join('') || '<div class="card">No matching games found on the scoreboard for this date.</div>';
+
+  mainChart = new Chart($('#mainChart'), {
+    type:'line',
+    data:{labels:[], datasets: WAGERS.map((w,i)=>({label:w.label, data:[], borderColor:COLORS[i%COLORS.length],
+      backgroundColor:COLORS[i%COLORS.length], borderWidth:2.5, pointRadius:0, tension:.3}))},
+    options: chartOpts(true)
+  });
+  relevant.forEach(({g, legs})=>{
+    sparks[g.id] = new Chart($('#gc-'+g.id), {type:'line',
+      data:{labels:[], datasets: legs.map((l,i)=>({label:legName(l), data:[], borderColor:COLORS[(i+2)%COLORS.length],
+        borderWidth:2, pointRadius:0, tension:.3}))},
+      options: chartOpts(false)});
+    sparks[g.id]._legs = legs;
+  });
+  built = true;
+}
+function chartOpts(legend){
+  return {responsive:true, maintainAspectRatio:false, animation:{duration:600},
+    interaction:{mode:'index', intersect:false},
+    plugins:{legend:{display:true, position: legend?'bottom':'top', labels:{color:'#8a98b0', boxWidth:10, font:{size:legend?11:10}}},
+      tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${c.parsed.y.toFixed(1)}%`}}},
+    scales:{y:{min:0,max:100,ticks:{color:'#8a98b0',callback:v=>v+'%'},grid:{color:'#1d2738'}},
+            x:{ticks:{color:'#8a98b0',maxTicksLimit:6},grid:{display:false}}}};
+}
+function gamesWithLegs(){
+  const map = new Map();
+  const seen = new Set();
+  WAGERS.forEach(w=>w.legs.forEach(l=>{
+    const k = legKey(l); if(seen.has(k)) return; seen.add(k);
+    const f = findGame(l.team); if(!f) return;
+    if(!map.has(f.g.id)) map.set(f.g.id, {g:f.g, legs:[]});
+    map.get(f.g.id).legs.push(l);
+  }));
+  return [...map.values()].sort((a,b)=>a.g.id.localeCompare(b.g.id));
+}
+
+function render(){
+  const labels = H.t.map(t=>new Date(t).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}));
+  let staked=0, exp=0, max=0;
+  WAGERS.forEach((w,i)=>{
+    const r = wagerEval(w);
+    staked += w.stake; exp += r.p*r.payout; max += r.legs.some(x=>x.status==='lost') ? 0 : r.payout;
+    const last = prev[w.id]; prev[w.id] = r.p;
+    const card = $('#w-'+w.id);
+    if(last!==undefined && Math.abs(r.p-last) > 0.04){
+      card.classList.add(r.p>last?'flashup':'flashdn');
+      setTimeout(()=>card.classList.remove('flashup','flashdn'), 1500);
+    }
+    $('#wp-'+w.id).textContent = pct(r.p);
+    $('#wp-'+w.id).style.color = colorFor(r.p);
+    $('#wb-'+w.id).style.width = (r.p*100)+'%';
+    $('#wb-'+w.id).style.background = colorFor(r.p);
+    $('#ws-'+w.id).textContent = `${money(w.stake)} to win ${money(r.payout-w.stake)}`;
+    $('#wl-'+w.id).innerHTML = r.legs.map(x=>legHTML(x.l, x)).join('');
+    const ev = r.p*r.payout - w.stake;
+    $('#we-'+w.id).innerHTML = `<span>Expected value</span><b style="color:${ev>=0?'var(--win)':'var(--lose)'}">${ev>=0?'+':''}${money(ev)}</b>`;
+    mainChart.data.datasets[i].data = (H.w[w.id]||[]).map(v=>v*100);
+  });
+  mainChart.data.labels = labels; mainChart.update();
+
+  Object.entries(sparks).forEach(([gid, ch])=>{
+    const g = games.find(x=>x.id===gid); if(!g) return;
+    $('#gsa-'+gid).textContent = g.state==='pre' ? '' : g.away.s;
+    $('#gsh-'+gid).textContent = g.state==='pre' ? '' : g.home.s;
+    $('#gd-'+gid).textContent = g.detail + (g.state==='in' && g.wp!==null ? `  ·  ESPN WP ${g.home.t.abbreviation} ${pct(g.wp)}` : '');
+    $('#gl-'+gid).innerHTML = ch._legs.map(l=>legHTML(l, legEval(l))).join('');
+    ch.data.labels = labels;
+    ch._legs.forEach((l,i)=>{ ch.data.datasets[i].data = (H.l[legKey(l)]||[]).map(v=>v*100); });
+    ch.update();
+  });
+
+  $('#kStake').textContent = money(staked);
+  $('#kExp').textContent = money(exp);
+  $('#kMax').textContent = money(max);
+  const pl = exp - staked;
+  $('#kPL').textContent = (pl>=0?'+':'') + money(pl);
+  $('#kPL').style.color = pl>=0 ? 'var(--win)' : 'var(--lose)';
+}
+function legHTML(l, x){
+  const tag = x.status==='push' ? 'pre' : x.status;
+  const label = x.status==='pre' ? (x.note==='not on scoreboard' ? 'not found' : 'pre') : x.status;
+  return `<div class="leg">${x.logo?`<img src="${x.logo}" alt="">`:''}
+    <span class="nm">${legName(l)} <span class="st">${x.note||''}</span></span>
+    <span class="tag ${tag}">${label}</span>
+    <span class="pc" style="color:${colorFor(x.p)}">${pct(x.p)}</span></div>`;
+}
+
+function record(){
+  H.t.push(Date.now());
+  WAGERS.forEach(w=>{ (H.w[w.id] ||= []).push(wagerEval(w).p); });
+  const seen = new Set();
+  WAGERS.forEach(w=>w.legs.forEach(l=>{ const k=legKey(l); if(seen.has(k)) return; seen.add(k);
+    (H.l[k] ||= []).push(legEval(l).p); }));
+  const CAP = 800;
+  if(H.t.length > CAP){ const cut = H.t.length-CAP; H.t.splice(0,cut);
+    Object.values(H.w).forEach(a=>a.splice(0,cut)); Object.values(H.l).forEach(a=>a.splice(0,cut)); }
+  save();
+}
+
+async function poll(){
+  try{
+    const r = await fetch(URL_, {cache:'no-store'});
+    const j = await r.json();
+    games = (j.events||[]).map(parseEvent);
+    if(!built) buildUI();
+    record(); render();
+    const live = games.filter(g=>g.state==='in').length;
+    $('#status').textContent = `Updated ${new Date().toLocaleTimeString()} · ${live} FBS games live`;
+  }catch(e){
+    $('#status').innerHTML = `<span class="err">Score fetch failed (${e.message}). Retrying…</span>`;
+  }
+}
+poll(); setInterval(poll, POLL_MS);
+</script>
+</body>
+</html>
